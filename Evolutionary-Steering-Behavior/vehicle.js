@@ -1,20 +1,32 @@
+const mr = 0.1;
+
 class Vehicle {
-  constructor(x, y) {
+  constructor(x, y, dna = {
+    food: {
+      weight: random(0, 1),
+      perception: random(0, 1)
+    },
+    poison: {
+      weight: random(0, 1),
+      perception: random(0, 1)
+    }
+  }) {
     this.acc = createVector(0, 0);
     this.vel = createVector(0, -2);
     this.pos = createVector(x, y);
-    this.r = 6;
-    this.maxspeed = 8;
-    this.maxforce = 0.2;
+    this.r = 4;
+    this.maxspeed = 5;
+    this.maxforce = 0.5;
 
-    this.dna = [];
-    for (let i = 0; i < 2; i++) this.dna.push(random(-5, 5));
+    this.dna = {};
+    this.dna.food = dna.food;
+    this.dna.poison = dna.poison;
 
     this.health = 1;
   }
 
   update() {
-    this.health -= 0.01;
+    this.health -= 0.001;
 
     this.vel.add(this.acc);
 
@@ -33,34 +45,56 @@ class Vehicle {
   }
 
   behaviors(good, bad) {
-    let steerG = this.eat(good, 0.1);
-    let steerB = this.eat(bad, -0.1);
+    let steerG = this.eat(good, 0.2, map(this.dna.food.perception, 0, 1, 0, 100));
+    let steerB = this.eat(bad, -0.5, map(this.dna.poison.perception, 0, 1, 0, 100));
 
-    steerG.mult(this.dna[0]);
-    steerB.mult(this.dna[1]);
+    steerG.mult(map(this.dna.food.weight, 0, 1, -2, 2));
+    steerB.mult(map(this.dna.poison.weight, 0, 1, -2, 2));
 
     this.applyForce(steerG);
     this.applyForce(steerB);
   }
 
-  eat(list, nutrition) {
+  clone() {
+    if (random(1) < map(this.health, 0, 1, 0, 0.001)) return new Vehicle(this.pos.x, this.pos.y, this.dna);
+    else return null;
+  }
+
+  mutate() {
+    const chooser = {
+      outer: random(1),
+      inner: random(1)
+    }
+
+    const vals = {}
+
+    if (chooser.outer < 0.5) vals.outer = 'food';
+    else vals.outer = 'poison'
+
+    if (chooser.inner < 0.5) vals.inner = 'weight';
+    else vals.inner = 'perception';
+
+    if (random(1) < mr) this.dna[vals.outer][vals.inner] += random(-0.01, 0.01);
+  }
+
+  eat(list, nutrition, perception) {
     let record = Infinity;
-    let closest = -1;
-    for (let i = 0; i < list.length; i++) {
+    let closest = null;
+    for (let i = list.length - 1; i >= 0; i--) {
       let d = this.pos.dist(list[i]);
-      if (d < record) {
+
+      if (d < this.maxspeed) {
+        list.splice(i, 1);
+        this.health += nutrition;
+      } else if (d < record && d < perception) {
         record = d;
-        closest = i;
+        closest = list[i];
       }
     }
-
-    if (record < 5) {
-      list.splice(closest, 1);
-      this.health += nutrition;
-    }
-    else if (closest > -1) return this.seek(list[closest]);
+    if (closest != null) return this.seek(closest);
 
     return createVector(0, 0);
+
   }
 
   seek(target) {
@@ -72,6 +106,33 @@ class Vehicle {
     steer.limit(this.maxforce);
 
     return steer;
+  }
+
+  boundaries() {
+
+    let desired = null;
+
+    let d = 25;
+
+    if (this.pos.x < d) {
+      desired = createVector(this.maxspeed, this.vel.y);
+    } else if (this.pos.x > width - d) {
+      desired = createVector(-this.maxspeed, this.vel.y);
+    }
+
+    if (this.pos.y < d) {
+      desired = createVector(this.vel.x, this.maxspeed);
+    } else if (this.pos.y > height - d) {
+      desired = createVector(this.vel.x, -this.maxspeed);
+    }
+
+    if (desired !== null) {
+      desired.normalize();
+      desired.mult(this.maxspeed);
+      let steer = p5.Vector.sub(desired, this.vel);
+      steer.limit(this.maxforce);
+      this.applyForce(steer);
+    }
   }
 
   display() {
@@ -87,12 +148,22 @@ class Vehicle {
     translate(this.pos.x, this.pos.y);
     rotate(angle)
 
+    strokeWeight(2);
+
     if (debug) {
+      noFill();
+
+      strokeWeight(3);
+
       stroke(0, 255, 0);
-      line(0, 0, 0, -this.dna[0] * 20);
+      ellipse(0, 0, map(this.dna.food.perception, 0, 1, 0, 100), map(this.dna.food.perception, 0, 1, 0, 100))
+      line(0, 0, 0, -map(this.dna.food.weight, 0, 1, -2, 2) * 20);
+
+      strokeWeight(2);
 
       stroke(255, 0, 0);
-      line(0, 0, 0, -this.dna[1] * 20);
+      ellipse(0, 0, map(this.dna.poison.perception, 0, 1, 0, 100), map(this.dna.poison.perception, 0, 1, 0, 100))
+      line(0, 0, 0, -map(this.dna.poison.weight, 0, 1, -2, 2) * 20);
     }
 
     fill(col);
